@@ -1,0 +1,5 @@
+{
+  "name": "Pruzaner Sztyme Review",
+  "description": "A tool for reviewing and correcting OCR and extracted information from historic newspaper issues, supporting image uploads and JSON data management.",
+  "requestFramePermissions": []
+}
