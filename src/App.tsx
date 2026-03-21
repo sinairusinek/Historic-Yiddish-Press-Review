@@ -13,7 +13,6 @@ import {
   Download, 
   ChevronRight, 
   ChevronLeft, 
-  Edit3, 
   Save, 
   History,
   X,
@@ -23,12 +22,11 @@ import {
   MapPin,
   Building2,
   Tag,
-  Layout,
   Check,
   AlertCircle,
   MessageSquare
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore - pdfjs-dist worker import
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
@@ -53,6 +51,7 @@ export default function App() {
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectedBlockRef = useRef<HTMLDivElement>(null);
 
   const handleJsonUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -270,6 +269,11 @@ export default function App() {
     };
   }, [selectedBlockId, currentPage, currentPageIndex]);
 
+  // Scroll selected block into view in the text panel
+  useEffect(() => {
+    selectedBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedBlockId]);
+
   if (!bundle) {
     return (
       <div className="min-h-screen bg-[#E4E3E0] flex items-center justify-center p-6 font-sans">
@@ -417,40 +421,25 @@ export default function App() {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {activeTab === 'ocr' && (
-              <div className="divide-y divide-black/5">
-                {filteredBlocks.map((block) => {
-                  const blockIdx = bundle.pages[currentPageIndex].blocks.indexOf(block);
-                  const correction = getCorrectionForPath(`pages.${currentPageIndex}.blocks.${blockIdx}.transcription`);
-                  const status = correction?.status || 'pending';
-                  
-                  return (
-                    <div 
-                      key={block.id}
-                      onClick={() => setSelectedBlockId(block.id)}
-                      className={`p-4 cursor-pointer transition-colors hover:bg-zinc-50 border-l-4 ${
-                        selectedBlockId === block.id ? 'bg-zinc-100 border-zinc-900' : 
-                        status === 'done_no_error' ? 'border-emerald-500 bg-emerald-50/30' :
-                        status === 'done_errors_found' ? 'border-rose-500 bg-rose-50/30' :
-                        'border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-zinc-400 uppercase">{block.id}</span>
-                          {correction?.comment && (
-                            <MessageSquare size={10} className="text-zinc-400" />
-                          )}
-                        </div>
-                        {status !== 'pending' && (
-                          <span className={`w-2 h-2 rounded-full ${status === 'done_no_error' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        )}
+              <div className="p-4 space-y-4">
+                {currentPage && (
+                  <>
+                    <div className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg border border-black/5">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-zinc-400 block">Progress</span>
+                        <span className="text-sm font-mono font-bold">
+                          {corrections.filter(c =>
+                            c.path.startsWith(`pages.${currentPageIndex}.`) && c.status !== 'pending'
+                          ).length} / {currentPage.blocks.length} reviewed
+                        </span>
                       </div>
-                      <p className="text-sm font-serif line-clamp-2 leading-relaxed" dir="rtl">
-                        {block.transcription}
-                      </p>
+                      <CheckCircle2 size={20} className="text-zinc-300" />
                     </div>
-                  );
-                })}
+                    <p className="text-xs text-zinc-400 text-center leading-relaxed">
+                      Click image regions or use the text panel on the right to select and navigate blocks.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -618,180 +607,167 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Sidebar: Editor */}
+        {/* Right Sidebar: Text Panel */}
         <aside className="w-96 bg-white border-l border-black/5 flex flex-col shrink-0">
-          <AnimatePresence mode="wait">
-            {selectedBlockId ? (
-              <motion.div 
-                key={selectedBlockId}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="flex-1 flex flex-col overflow-hidden"
-              >
-                <div className="p-6 border-b border-black/5 flex items-center justify-between bg-zinc-50">
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-tight flex items-center gap-2">
-                      <Edit3 size={14} />
-                      Block Editor
-                    </h3>
-                    <p className="text-[10px] font-mono text-zinc-400 mt-1">{selectedBlockId}</p>
-                  </div>
-                  <button 
-                    onClick={() => setSelectedBlockId(null)}
-                    className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+          {/* Header */}
+          <div className="h-14 border-b border-black/5 flex items-center justify-between px-4 bg-zinc-50 shrink-0">
+            <span className="text-xs font-bold uppercase tracking-tight text-zinc-500">Text Blocks</span>
+            {currentPage && (
+              <span className="text-[10px] font-mono text-zinc-400">
+                {selectedBlockId
+                  ? `${currentPage.blocks.findIndex(b => b.id === selectedBlockId) + 1} / ${currentPage.blocks.length}`
+                  : `${currentPage.blocks.length} blocks`}
+              </span>
+            )}
+          </div>
+          {/* Prev / Next navigation */}
+          <div className="flex border-b border-black/5 shrink-0">
+            <button
+              disabled={!selectedBlockId || !currentPage || currentPage.blocks.findIndex(b => b.id === selectedBlockId) <= 0}
+              onClick={() => {
+                if (!currentPage) return;
+                const idx = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
+                if (idx > 0) setSelectedBlockId(currentPage.blocks[idx - 1].id);
+              }}
+              className="flex-1 py-2.5 text-xs flex items-center justify-center gap-1 border-r border-black/5 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-semibold"
+            >
+              <ChevronLeft size={13} /> Prev
+            </button>
+            <button
+              disabled={!selectedBlockId || !currentPage || currentPage.blocks.findIndex(b => b.id === selectedBlockId) >= currentPage.blocks.length - 1}
+              onClick={() => {
+                if (!currentPage) return;
+                const idx = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
+                if (idx < currentPage.blocks.length - 1) setSelectedBlockId(currentPage.blocks[idx + 1].id);
+              }}
+              className="flex-1 py-2.5 text-xs flex items-center justify-center gap-1 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-semibold"
+            >
+              Next <ChevronRight size={13} />
+            </button>
+          </div>
+
+          {/* Scrollable block list with inline editors */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
+            {filteredBlocks.map((block) => {
+              const blockIdx = bundle.pages[currentPageIndex].blocks.indexOf(block);
+              const correctionPath = `pages.${currentPageIndex}.blocks.${blockIdx}.transcription`;
+              const correction = getCorrectionForPath(correctionPath);
+              const status = correction?.status || 'pending';
+              const isSelected = selectedBlockId === block.id;
+
+              return (
+                <div key={block.id} ref={isSelected ? selectedBlockRef : undefined}>
+                  {/* Block card header */}
+                  <div
+                    onClick={() => setSelectedBlockId(block.id)}
+                    className={`p-3 cursor-pointer flex items-center justify-between transition-colors ${
+                      isSelected ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50'
+                    }`}
                   >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                  {/* Transcription Editor */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Transcription (Yiddish)</label>
-                    <textarea 
-                      dir="rtl"
-                      className="w-full h-48 p-4 bg-zinc-50 border border-black/5 rounded-xl font-serif text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
-                      value={currentPage.blocks.find(b => b.id === selectedBlockId)?.transcription || ''}
-                      onChange={(e) => {
-                        const blockIndex = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
-                        const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIndex]?.transcription || '';
-                        const currentCorrection = getCorrectionForPath(`pages.${currentPageIndex}.blocks.${blockIndex}.transcription`);
-                        addOrUpdateCorrection(
-                          `pages.${currentPageIndex}.blocks.${blockIndex}.transcription`, 
-                          original, 
-                          e.target.value,
-                          currentCorrection?.status || 'pending',
-                          currentCorrection?.comment
-                        );
-                      }}
-                    />
-                  </div>
-
-                  {/* Comment Editor */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest flex items-center gap-2">
-                      <MessageSquare size={12} />
-                      Reviewer Comment
-                    </label>
-                    <textarea 
-                      className="w-full h-24 p-4 bg-zinc-50 border border-black/5 rounded-xl text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
-                      placeholder="Add notes about this block..."
-                      value={getCorrectionForPath(`pages.${currentPageIndex}.blocks.${currentPage.blocks.findIndex(b => b.id === selectedBlockId)}.transcription`)?.comment || ''}
-                      onChange={(e) => {
-                        const blockIndex = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
-                        const block = currentPage.blocks[blockIndex];
-                        const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIndex]?.transcription || '';
-                        const currentCorrection = getCorrectionForPath(`pages.${currentPageIndex}.blocks.${blockIndex}.transcription`);
-                        addOrUpdateCorrection(
-                          `pages.${currentPageIndex}.blocks.${blockIndex}.transcription`,
-                          original,
-                          block.transcription,
-                          currentCorrection?.status || 'pending',
-                          e.target.value
-                        );
-                      }}
-                    />
-                  </div>
-
-                  {/* Status Marking */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Review Status</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button 
-                        onClick={() => {
-                          const blockIndex = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
-                          const block = currentPage.blocks[blockIndex];
-                          const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIndex]?.transcription || '';
-                          const currentCorrection = getCorrectionForPath(`pages.${currentPageIndex}.blocks.${blockIndex}.transcription`);
-                          addOrUpdateCorrection(
-                            `pages.${currentPageIndex}.blocks.${blockIndex}.transcription`,
-                            original,
-                            block.transcription,
-                            'done_no_error',
-                            currentCorrection?.comment
-                          );
-                        }}
-                        className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all ${
-                          getCorrectionForPath(`pages.${currentPageIndex}.blocks.${currentPage.blocks.findIndex(b => b.id === selectedBlockId)}.transcription`)?.status === 'done_no_error'
-                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                          : 'bg-white border-zinc-200 text-zinc-600 hover:border-emerald-500 hover:text-emerald-600'
-                        }`}
-                      >
-                        <Check size={14} />
-                        No Error
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const blockIndex = currentPage.blocks.findIndex(b => b.id === selectedBlockId);
-                          const block = currentPage.blocks[blockIndex];
-                          const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIndex]?.transcription || '';
-                          const currentCorrection = getCorrectionForPath(`pages.${currentPageIndex}.blocks.${blockIndex}.transcription`);
-                          addOrUpdateCorrection(
-                            `pages.${currentPageIndex}.blocks.${blockIndex}.transcription`,
-                            original,
-                            block.transcription,
-                            'done_errors_found',
-                            currentCorrection?.comment
-                          );
-                        }}
-                        className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all ${
-                          getCorrectionForPath(`pages.${currentPageIndex}.blocks.${currentPage.blocks.findIndex(b => b.id === selectedBlockId)}.transcription`)?.status === 'done_errors_found'
-                          ? 'bg-rose-600 border-rose-600 text-white shadow-lg shadow-rose-600/20'
-                          : 'bg-white border-zinc-200 text-zinc-600 hover:border-rose-500 hover:text-rose-600'
-                        }`}
-                      >
-                        <AlertCircle size={14} />
-                        Errors Found
-                      </button>
+                    <div className="flex items-center gap-2">
+                      {status === 'done_no_error' ? (
+                        <CheckCircle2 size={12} className={isSelected ? 'text-emerald-300' : 'text-emerald-500'} />
+                      ) : status === 'done_errors_found' ? (
+                        <AlertCircle size={12} className={isSelected ? 'text-rose-300' : 'text-rose-500'} />
+                      ) : (
+                        <div className={`w-3 h-3 rounded-full border-2 ${isSelected ? 'border-zinc-500' : 'border-zinc-300'}`} />
+                      )}
+                      <span className="text-[10px] font-mono uppercase">{block.id}</span>
+                      {correction?.comment && (
+                        <MessageSquare size={10} className="text-zinc-400" />
+                      )}
                     </div>
+                    <ChevronRight size={12} className={`transition-transform ${isSelected ? 'rotate-90' : ''}`} />
                   </div>
 
-                  {/* Metadata Info */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-zinc-50 rounded-lg border border-black/5">
-                      <span className="text-[10px] font-bold uppercase text-zinc-400 block mb-1">Confidence</span>
-                      <span className="text-sm font-mono">{(currentPage.blocks.find(b => b.id === selectedBlockId)?.confidence || 0) * 100}%</span>
-                    </div>
-                    <div className="p-3 bg-zinc-50 rounded-lg border border-black/5">
-                      <span className="text-[10px] font-bold uppercase text-zinc-400 block mb-1">Content Unit</span>
-                      <span className="text-sm font-mono truncate block">{currentPage.blocks.find(b => b.id === selectedBlockId)?.content_unit_id}</span>
-                    </div>
-                  </div>
+                  {isSelected ? (
+                    /* Inline editor for selected block */
+                    <div className="px-4 pb-4 pt-2 bg-zinc-50 space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Transcription (Yiddish)</label>
+                        <textarea
+                          dir="rtl"
+                          className="w-full h-40 p-3 bg-white border border-black/10 rounded-lg font-serif text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
+                          value={block.transcription}
+                          onChange={(e) => {
+                            const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIdx]?.transcription || '';
+                            addOrUpdateCorrection(correctionPath, original, e.target.value, correction?.status || 'pending', correction?.comment);
+                          }}
+                        />
+                      </div>
 
-                  {/* Content Unit Link */}
-                  {(() => {
-                    const block = currentPage.blocks.find(b => b.id === selectedBlockId);
-                    const unit = bundle.content_units.find(u => u.id === block?.content_unit_id);
-                    if (!unit) return null;
-                    return (
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Linked Content Unit</label>
-                        <div className="p-4 bg-zinc-900 text-white rounded-xl shadow-lg">
-                          <h4 className="font-semibold text-sm mb-1">{unit.title}</h4>
-                          <p className="text-xs text-zinc-400 mb-3">{unit.category}</p>
-                          <div className="space-y-2">
-                            <span className="text-[10px] font-bold uppercase text-zinc-500 block">Translation Preview</span>
-                            <p className="text-xs italic text-zinc-300 line-clamp-3 leading-relaxed">
-                              {unit.english_translation}
-                            </p>
-                          </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest flex items-center gap-1">
+                          <MessageSquare size={10} /> Reviewer Comment
+                        </label>
+                        <textarea
+                          className="w-full h-16 p-3 bg-white border border-black/10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
+                          placeholder="Add notes..."
+                          value={correction?.comment || ''}
+                          onChange={(e) => {
+                            const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIdx]?.transcription || '';
+                            addOrUpdateCorrection(correctionPath, original, block.transcription, correction?.status || 'pending', e.target.value);
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIdx]?.transcription || '';
+                            addOrUpdateCorrection(correctionPath, original, block.transcription, 'done_no_error', correction?.comment);
+                          }}
+                          className={`flex items-center justify-center gap-1 p-2.5 rounded-lg border text-xs font-bold transition-all ${
+                            status === 'done_no_error'
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                              : 'bg-white border-zinc-200 text-zinc-600 hover:border-emerald-500 hover:text-emerald-600'
+                          }`}
+                        >
+                          <Check size={12} /> No Error
+                        </button>
+                        <button
+                          onClick={() => {
+                            const original = initialBundle?.pages?.[currentPageIndex]?.blocks?.[blockIdx]?.transcription || '';
+                            addOrUpdateCorrection(correctionPath, original, block.transcription, 'done_errors_found', correction?.comment);
+                          }}
+                          className={`flex items-center justify-center gap-1 p-2.5 rounded-lg border text-xs font-bold transition-all ${
+                            status === 'done_errors_found'
+                              ? 'bg-rose-600 border-rose-600 text-white shadow-sm shadow-rose-600/20'
+                              : 'bg-white border-zinc-200 text-zinc-600 hover:border-rose-500 hover:text-rose-600'
+                          }`}
+                        >
+                          <AlertCircle size={12} /> Errors
+                        </button>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <div className="flex-1 p-2 bg-white rounded-lg border border-black/5">
+                          <span className="text-[9px] font-bold uppercase text-zinc-400 block">Confidence</span>
+                          <span className="text-xs font-mono">{Math.round(block.confidence * 100)}%</span>
+                        </div>
+                        <div className="flex-1 p-2 bg-white rounded-lg border border-black/5">
+                          <span className="text-[9px] font-bold uppercase text-zinc-400 block">Content Unit</span>
+                          <span className="text-xs font-mono truncate block">{block.content_unit_id || '—'}</span>
                         </div>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  ) : (
+                    /* RTL text snippet */
+                    <div className="px-4 pb-3 pt-0.5">
+                      <p className="text-sm font-serif line-clamp-2 leading-relaxed text-zinc-500" dir="rtl">
+                        {block.transcription}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </motion.div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-zinc-400">
-                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-6">
-                  <Layout size={32} className="opacity-20" />
-                </div>
-                <h3 className="font-serif italic text-lg text-zinc-900 mb-2">No Block Selected</h3>
-                <p className="text-sm leading-relaxed">Select a block from the list or click on the image to begin reviewing and correcting the OCR transcription.</p>
+              );
+            })}
+            {filteredBlocks.length === 0 && currentPage && (
+              <div className="flex flex-col items-center justify-center h-40 text-zinc-400">
+                <p className="text-sm">No blocks match the search.</p>
               </div>
             )}
-          </AnimatePresence>
+          </div>
         </aside>
       </main>
 

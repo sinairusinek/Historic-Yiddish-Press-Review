@@ -1,20 +1,34 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Historic Yiddish Press Review
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/3ecf785c-3b74-4189-8dd8-56ebb590d7af
-
-## Run Locally
-
-**Prerequisites:**  Node.js
+This repository now includes a Streamlit OCR review app for the Pruzaner Sztyme edition bundle.
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Included defaults
+
+- `data/default_bundle.json`: bundled edition JSON (auto-loaded on startup)
+- `19381216_01.pdf`: default PDF in repository root (auto-used for page rendering)
+
+You can still upload a different JSON and/or PDF at runtime.
+
+## Run the Streamlit app
+
+1. Create and activate a Python environment.
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Start the app:
+
+```bash
+streamlit run app.py
+```
+
+## What the app does
+
+- Loads edition bundle data and page images
+- Lists OCR blocks with search and review status
+- Draws block bounding boxes on rendered PDF pages
+- Lets reviewers edit transcription text, add comments, and set status
+- Exports corrected output as JSON with a `corrections` array

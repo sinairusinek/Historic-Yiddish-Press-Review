@@ -93,7 +93,7 @@ export interface Section {
   [key: string]: any;
 }
 
-export type BlockStatus = 'pending' | 'done_no_error' | 'done_errors_found';
+export type BlockStatus = 'pending' | 'done';
 
 export interface Correction {
   path: string; // e.g., "pages.0.blocks.5.transcription"
