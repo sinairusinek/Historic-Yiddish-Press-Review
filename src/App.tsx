@@ -157,13 +157,13 @@ export default function App() {
   };
 
   const handleDownload = () => {
-    if (!bundle) return;
-    const finalBundle = { ...bundle, corrections };
+    if (!initialBundle) return;
+    const finalBundle = { ...initialBundle, corrections };
     const blob = new Blob([JSON.stringify(finalBundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pruzaner_review_${bundle.edition.date}.json`;
+    a.download = `pruzaner_review_${initialBundle.edition.date}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
