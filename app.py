@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import io
 import json
@@ -9,6 +10,7 @@ from typing import Any
 
 import fitz
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 from PIL import Image
 
@@ -161,13 +163,63 @@ def export_bundle() -> bytes:
     return json.dumps(final_bundle, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def _github_secrets() -> tuple[str, str, str] | None:
+    """Return (token, repo, branch) from Streamlit secrets, or None."""
+    try:
+        gh = st.secrets["github"]
+        token = gh["token"]
+        repo = gh["repo"]
+        branch = gh.get("branch", "main")
+        return token, repo, branch
+    except Exception:
+        return None
+
+
+def _save_to_github(content_json: str) -> None:
+    """Commit data/default_bundle.json to GitHub via the Contents API."""
+    secrets = _github_secrets()
+    if secrets is None:
+        raise RuntimeError("GitHub secrets not configured")
+    token, repo, branch = secrets
+    api_path = "data/default_bundle.json"
+    url = f"https://api.github.com/repos/{repo}/contents/{api_path}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # Get current file SHA (required for update).
+    get_resp = requests.get(url, headers=headers, params={"ref": branch}, timeout=15)
+    if get_resp.status_code != 200:
+        raise RuntimeError(f"GitHub GET failed ({get_resp.status_code}): {get_resp.text[:200]}")
+    current_sha = get_resp.json()["sha"]
+
+    # Commit the updated file.
+    encoded = base64.b64encode(content_json.encode("utf-8")).decode("ascii")
+    put_resp = requests.put(
+        url,
+        headers=headers,
+        json={
+            "message": "Auto-save reviewer corrections",
+            "content": encoded,
+            "sha": current_sha,
+            "branch": branch,
+        },
+        timeout=30,
+    )
+    if put_resp.status_code not in (200, 201):
+        raise RuntimeError(f"GitHub PUT failed ({put_resp.status_code}): {put_resp.text[:200]}")
+
+
 def save_bundle_to_disk() -> None:
     final_bundle = copy.deepcopy(st.session_state.initial_bundle)
     final_bundle["corrections"] = st.session_state.corrections
-    DEFAULT_JSON_PATH.write_text(
-        json.dumps(final_bundle, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    content_json = json.dumps(final_bundle, ensure_ascii=False, indent=2)
+
+    if _github_secrets() is not None:
+        _save_to_github(content_json)
+    else:
+        DEFAULT_JSON_PATH.write_text(content_json, encoding="utf-8")
 
 
 def block_path(page_index: int, block_index: int) -> str:
@@ -391,8 +443,8 @@ def render_image_panel(
             1. Select a block from the image or text list.
             2. Edit the transcription in the right panel.
             3. Add an optional reviewer comment.
-            4. Click `Save Block Review` to persist changes.
-            5. Check `Mark as done` and save to write updates to the repo bundle file.
+            4. Check `Mark as done` to mark a block as reviewed.
+            Changes are saved automatically when you leave a field.
             """
         )
 
@@ -412,34 +464,34 @@ def _render_inline_editor(
     current_status = block_status(current_page_index, block_index)
     editor_text_key = f"editor_text_{path}"
     done_status_key = f"done_status_{path}"
+    comment_key = f"comment_{path}"
 
     if editor_text_key not in st.session_state:
         st.session_state[editor_text_key] = current_text
+    if done_status_key not in st.session_state:
+        st.session_state[done_status_key] = current_status == "done"
+    if comment_key not in st.session_state:
+        st.session_state[comment_key] = current_comment
+
+    def _autosave() -> None:
+        new_text = st.session_state[editor_text_key]
+        new_status = "done" if st.session_state[done_status_key] else "pending"
+        new_comment = st.session_state[comment_key]
+        original = get_by_path(st.session_state.initial_bundle, path)
+        add_or_update_correction(path, original, new_text, new_status, new_comment)
+        try:
+            save_bundle_to_disk()
+            st.toast("Saved ✓")
+        except Exception as exc:
+            st.error(f"Could not write to disk: {exc}")
 
     st.caption(f"Block ID: {block_id}")
     st.caption(f"Confidence: {round(float(block.get('confidence', 0.0)) * 100, 2)}%")
     st.caption(f"Content Unit: {block.get('content_unit_id', '')}")
 
-    form_key = f"edit_form_{current_page_index}_{block_index}"
-    with st.form(form_key):
-        new_text = st.text_area("Transcription", key=editor_text_key, height=180)
-        if done_status_key not in st.session_state:
-            st.session_state[done_status_key] = current_status == "done"
-        is_done = st.checkbox("Mark as done", key=done_status_key)
-        new_status = "done" if is_done else "pending"
-        new_comment = st.text_area("Reviewer Comment", value=current_comment, height=80)
-        submitted = st.form_submit_button("Save Block Review")
-
-    if submitted:
-        original = get_by_path(st.session_state.initial_bundle, path)
-        add_or_update_correction(path, original, new_text, new_status, new_comment)
-        if new_status == "done":
-            try:
-                save_bundle_to_disk()
-            except Exception as exc:
-                st.error(f"Saved review but could not write to disk: {exc}")
-        st.success("Block review saved.")
-        st.rerun()
+    st.text_area("Transcription", key=editor_text_key, height=180, on_change=_autosave)
+    st.checkbox("Mark as done", key=done_status_key, on_change=_autosave)
+    st.text_area("Reviewer Comment", key=comment_key, height=80, on_change=_autosave)
 
 
 def render_text_panel(
