@@ -529,6 +529,15 @@ def render_text_panel(
 
     st.divider()
 
+    # Editor for selected block – rendered at the top so it is always
+    # visible without scrolling, regardless of where the block sits in
+    # the list below.
+    if current_idx >= 0:
+        _render_inline_editor(
+            blocks[current_idx], selected_block_id, current_idx, current_page_index,
+        )
+        st.divider()
+
     needle = st.session_state.search_term.lower().strip()
     clicked_id: str | None = None
 
@@ -551,19 +560,16 @@ def render_text_panel(
             if not is_selected:
                 clicked_id = block_id
 
-        if is_selected:
-            _render_inline_editor(block, block_id, idx, current_page_index)
-        else:
-            snippet = text.replace("\n", " ")[:100]
-            st.markdown(
-                (
-                    "<div style='direction:rtl;text-align:right;font-size:0.85rem;color:#64748b;"
-                    "margin:-0.3rem 0 0.5rem 0;line-height:1.45;'>"
-                )
-                + snippet
-                + "</div>",
-                unsafe_allow_html=True,
+        snippet = text.replace("\n", " ")[:100]
+        st.markdown(
+            (
+                "<div style='direction:rtl;text-align:right;font-size:0.85rem;color:#64748b;"
+                "margin:-0.3rem 0 0.5rem 0;line-height:1.45;'>"
             )
+            + snippet
+            + "</div>",
+            unsafe_allow_html=True,
+        )
 
     return clicked_id
 
