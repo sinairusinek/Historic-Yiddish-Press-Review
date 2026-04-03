@@ -560,7 +560,7 @@ def render_text_panel(
             if not is_selected:
                 clicked_id = block_id
 
-        snippet = text.replace("\n", " ")[:100]
+        snippet = text.replace("\n", " ")
         st.markdown(
             (
                 "<div style='direction:rtl;text-align:right;font-size:0.85rem;color:#64748b;"
@@ -662,7 +662,7 @@ def main() -> None:
             st.rerun()
     with col_right:
         # Keep the text panel aligned with the image area while allowing long block lists to scroll.
-        with st.container(height=760):
+        with st.container(height=760, key=f"text_panel_{st.session_state.selected_block_id or 'none'}"):
             clicked_text_block = render_text_panel(
                 current_page,
                 st.session_state.selected_block_id,
