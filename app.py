@@ -392,8 +392,8 @@ def render_image_panel(
         bottom = min(source_height, y + h + pad_y)
         for col_idx in range(cols):
             for row_idx in range(rows):
-            hit_x.append(left + ((col_idx + 0.5) * (right - left) / cols))
-            hit_y.append(top + ((row_idx + 0.5) * (bottom - top) / rows))
+                hit_x.append(left + ((col_idx + 0.5) * (right - left) / cols))
+                hit_y.append(top + ((row_idx + 0.5) * (bottom - top) / rows))
                 hit_ids.append(block_id)
 
     # Invisible hit targets improve click selection reliability across dense layouts
