@@ -427,7 +427,7 @@ def render_image_panel(
         margin=dict(l=4, r=4, t=4, b=4),
         xaxis=dict(visible=False, range=x_range),
         yaxis=dict(visible=False, range=y_range, scaleanchor="x", scaleratio=1),
-        dragmode="pan",
+        dragmode=False,
         clickmode="event+select",
         height=760,
     )
@@ -544,20 +544,22 @@ def render_text_panel(
 
     st.divider()
 
+    # --- Editor section (always visible, not inside a scrollable area) ---
     if current_idx >= 0:
         st.markdown("#### Selected Block")
         _render_inline_editor(
             blocks[current_idx], selected_block_id, current_idx, current_page_index,
         )
-        st.divider()
     else:
-        st.info("Select a highlighted region on the page image (left) or choose a block below.")
-        st.divider()
+        st.info("Click a highlighted region on the page image or choose a block from the list below.")
 
+    st.divider()
+
+    # --- Block List section (scrollable) ---
     needle = st.session_state.search_term.lower().strip()
     clicked_id: str | None = None
 
-    with st.expander("Block List", expanded=True):
+    with st.container(height=300):
         for idx, block in enumerate(blocks):
             block_id = block.get("id", "")
             text = block.get("transcription", "")
@@ -678,13 +680,12 @@ def main() -> None:
             st.session_state.selected_block_id = clicked_block_id
             st.rerun()
     with col_right:
-        # Keep the text panel aligned with the image area while allowing long block lists to scroll.
-        with st.container(height=760, key="text_panel"):
-            clicked_text_block = render_text_panel(
-                current_page,
-                st.session_state.selected_block_id,
-                st.session_state.current_page_index,
-            )
+        # Render the editor outside the scrollable container so it's always visible.
+        clicked_text_block = render_text_panel(
+            current_page,
+            st.session_state.selected_block_id,
+            st.session_state.current_page_index,
+        )
         if clicked_text_block and clicked_text_block != st.session_state.selected_block_id:
             st.session_state.selected_block_id = clicked_text_block
             st.rerun()
