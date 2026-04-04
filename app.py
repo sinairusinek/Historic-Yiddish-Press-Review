@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import html
 import io
 import json
 from datetime import datetime
@@ -351,9 +352,9 @@ def render_image_panel(
     )
 
     selected_bbox: list[float] | None = None
-    center_x: list[float] = []
-    center_y: list[float] = []
-    center_ids: list[str] = []
+    hit_x: list[float] = []
+    hit_y: list[float] = []
+    hit_ids: list[str] = []
     blocks = current_page.get("blocks", [])
     for idx, block in enumerate(blocks):
         bbox = block.get("bbox", [0, 0, 0, 0])
@@ -378,18 +379,32 @@ def render_image_panel(
                 showlegend=False,
             )
         )
-        center_x.append(x + (w / 2.0))
-        center_y.append(y + (h / 2.0))
-        center_ids.append(block_id)
 
-    # Invisible hit targets improve click selection reliability across dense layouts.
+        # Dense invisible points make the full region easy to click, not just edges.
+        # Tiny regions get extra density and slight padding to remain selectable.
+        cols = max(3, min(10, int(w // 120) + 2))
+        rows = max(3, min(10, int(h // 80) + 2))
+        pad_x = min(18.0, max(4.0, w * 0.12))
+        pad_y = min(18.0, max(4.0, h * 0.12))
+        left = max(0.0, x - pad_x)
+        right = min(source_width, x + w + pad_x)
+        top = max(0.0, y - pad_y)
+        bottom = min(source_height, y + h + pad_y)
+        for col_idx in range(cols):
+            for row_idx in range(rows):
+            hit_x.append(left + ((col_idx + 0.5) * (right - left) / cols))
+            hit_y.append(top + ((row_idx + 0.5) * (bottom - top) / rows))
+                hit_ids.append(block_id)
+
+    # Invisible hit targets improve click selection reliability across dense layouts
+    # and for clicks inside a block's interior.
     figure.add_trace(
         go.Scatter(
-            x=center_x,
-            y=center_y,
+            x=hit_x,
+            y=hit_y,
             mode="markers",
-            marker=dict(size=13, color="rgba(0,0,0,0.001)"),
-            customdata=[[bid] for bid in center_ids],
+            marker=dict(size=22, color="rgba(0,0,0,0.001)"),
+            customdata=[[bid] for bid in hit_ids],
             hovertemplate="%{customdata[0]}<extra></extra>",
             showlegend=False,
         )
@@ -399,8 +414,8 @@ def render_image_panel(
     y_range = [source_height, 0.0]
     if selected_bbox:
         x, y, w, h = selected_bbox
-        margin_x = max(120.0, w * 1.35)
-        margin_y = max(120.0, h * 1.35)
+        margin_x = max(80.0, w * 0.72)
+        margin_y = max(80.0, h * 0.72)
         x0 = max(0.0, x - margin_x)
         x1 = min(source_width, x + w + margin_x)
         y0 = max(0.0, y - margin_y)
@@ -422,7 +437,7 @@ def render_image_panel(
         use_container_width=True,
         config={"scrollZoom": True, "displaylogo": False},
         on_select="rerun",
-        selection_mode=["points"],
+        selection_mode=["points", "box"],
         key=f"plot_page_{current_page_index}_{selected_block_id or 'none'}",
     )
 
@@ -489,7 +504,7 @@ def _render_inline_editor(
     st.caption(f"Confidence: {round(float(block.get('confidence', 0.0)) * 100, 2)}%")
     st.caption(f"Content Unit: {block.get('content_unit_id', '')}")
 
-    st.text_area("Transcription", key=editor_text_key, height=180, on_change=_autosave)
+    st.text_area("Transcription", key=editor_text_key, height=360, on_change=_autosave)
     st.checkbox("Mark as done", key=done_status_key, on_change=_autosave)
     st.text_area("Reviewer Comment", key=comment_key, height=80, on_change=_autosave)
 
@@ -499,7 +514,7 @@ def render_text_panel(
     selected_block_id: str | None,
     current_page_index: int,
 ) -> str | None:
-    st.subheader("Text Blocks")
+    st.subheader("Text Editor")
     blocks = current_page.get("blocks", [])
     if not blocks:
         st.info("No blocks on this page.")
@@ -513,7 +528,7 @@ def render_text_panel(
         if st.button("▲ Prev", disabled=current_idx <= 0, use_container_width=True, key="nav_prev_block"):
             return block_ids[current_idx - 1]
     with nav_info:
-        label = f"Block {current_idx + 1} / {len(blocks)}" if current_idx >= 0 else f"{len(blocks)} blocks - click one"
+        label = f"Block {current_idx + 1} / {len(blocks)}" if current_idx >= 0 else "Click a region on the image to start editing"
         st.markdown(
             f"<div style='text-align:center;padding:6px 0;font-size:0.9rem;'>{label}</div>",
             unsafe_allow_html=True,
@@ -529,47 +544,49 @@ def render_text_panel(
 
     st.divider()
 
-    # Editor for selected block – rendered at the top so it is always
-    # visible without scrolling, regardless of where the block sits in
-    # the list below.
     if current_idx >= 0:
+        st.markdown("#### Selected Block")
         _render_inline_editor(
             blocks[current_idx], selected_block_id, current_idx, current_page_index,
         )
+        st.divider()
+    else:
+        st.info("Select a highlighted region on the page image (left) or choose a block below.")
         st.divider()
 
     needle = st.session_state.search_term.lower().strip()
     clicked_id: str | None = None
 
-    for idx, block in enumerate(blocks):
-        block_id = block.get("id", "")
-        text = block.get("transcription", "")
-        if needle and needle not in text.lower() and needle not in block_id.lower():
-            continue
+    with st.expander("Block List", expanded=True):
+        for idx, block in enumerate(blocks):
+            block_id = block.get("id", "")
+            text = block.get("transcription", "")
+            if needle and needle not in text.lower() and needle not in block_id.lower():
+                continue
 
-        is_selected = block_id == selected_block_id
-        status = block_status(current_page_index, idx)
-        status_icon = "◻" if status == "pending" else "✓"
-        prefix = "▶ " if is_selected else ""
+            is_selected = block_id == selected_block_id
+            status = block_status(current_page_index, idx)
+            status_icon = "◻" if status == "pending" else "✓"
+            prefix = "▶ " if is_selected else ""
 
-        if st.button(
-            f"{prefix}{status_icon} {block_id}",
-            key=f"tcard_{current_page_index}_{idx}",
-            use_container_width=True,
-        ):
-            if not is_selected:
-                clicked_id = block_id
+            if st.button(
+                f"{prefix}{status_icon} {block_id}",
+                key=f"tcard_{current_page_index}_{idx}",
+                use_container_width=True,
+            ):
+                if not is_selected:
+                    clicked_id = block_id
 
-        snippet = text.replace("\n", " ")
-        st.markdown(
-            (
-                "<div style='direction:rtl;text-align:right;font-size:0.85rem;color:#64748b;"
-                "margin:-0.3rem 0 0.5rem 0;line-height:1.45;'>"
+            snippet = html.escape(text)
+            st.markdown(
+                (
+                    "<div style='direction:rtl;text-align:right;font-size:0.85rem;color:#64748b;"
+                    "margin:-0.3rem 0 0.6rem 0;line-height:1.45;white-space:pre-wrap;'>"
+                )
+                + snippet
+                + "</div>",
+                unsafe_allow_html=True,
             )
-            + snippet
-            + "</div>",
-            unsafe_allow_html=True,
-        )
 
     return clicked_id
 
@@ -654,7 +671,7 @@ def main() -> None:
         if st.session_state.current_page_index < len(rendered):
             page_png = rendered[st.session_state.current_page_index]
 
-    col_left, col_right = st.columns([3, 2])
+    col_left, col_right = st.columns([5, 4])
     with col_left:
         clicked_block_id = render_image_panel(current_page, selected_block_id, page_png, st.session_state.current_page_index)
         if clicked_block_id and clicked_block_id != st.session_state.selected_block_id:
@@ -662,7 +679,7 @@ def main() -> None:
             st.rerun()
     with col_right:
         # Keep the text panel aligned with the image area while allowing long block lists to scroll.
-        with st.container(height=760, key=f"text_panel_{st.session_state.selected_block_id or 'none'}"):
+        with st.container(height=760, key="text_panel"):
             clicked_text_block = render_text_panel(
                 current_page,
                 st.session_state.selected_block_id,
