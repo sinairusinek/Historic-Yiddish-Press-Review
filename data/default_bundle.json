@@ -7710,6 +7710,14 @@
       "status": "done",
       "comment": "",
       "timestamp": "2026-05-01T15:43:21.540630"
+    },
+    {
+      "path": "pages.0.blocks.17.transcription",
+      "original": "# PODZIĘKOWANIE\n\n> Panu Doktorowi **ILNICKIEMU**\n> DYREKT. SZPITALA SEJMIKOWEGO W PRUŻANIE\n\nSkładamy tą drogą Serdeczne Podziękowanie za troskliwą i bezinteresowną opiekę oraz skuteczną pomoc lekarską i pielęgniarce Pani **GRZYBOWSKIEJ** za pomoc przy moim porodzie\n\n~ Mojżesz i Regina Judewicz",
+      "corrected": "# PODZIĘKOWANIE\n\n> Panu Doktorowi **ILNICKIEMU**\n> DYREKT. SZPITALA SEJMIKOWEGO W PRUŻANIE\n\nSkładamy tą drogą Serdeczne Podziękowanie za troskliwą i bezinteresowną opiekę oraz skuteczną pomoc lekarską i pielęgniarce \nPani **GRZYBOWSKIEJ** \nza pomoc przy moim porodzie\n\n~ Mojżesz i Regina Judewicz",
+      "status": "pending",
+      "comment": "",
+      "timestamp": "2026-05-01T15:46:07.374798"
     }
   ]
 }
