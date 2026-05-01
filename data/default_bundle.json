@@ -7715,9 +7715,17 @@
       "path": "pages.0.blocks.17.transcription",
       "original": "# PODZIĘKOWANIE\n\n> Panu Doktorowi **ILNICKIEMU**\n> DYREKT. SZPITALA SEJMIKOWEGO W PRUŻANIE\n\nSkładamy tą drogą Serdeczne Podziękowanie za troskliwą i bezinteresowną opiekę oraz skuteczną pomoc lekarską i pielęgniarce Pani **GRZYBOWSKIEJ** za pomoc przy moim porodzie\n\n~ Mojżesz i Regina Judewicz",
       "corrected": "# PODZIĘKOWANIE\n\n> Panu Doktorowi **ILNICKIEMU**\n> DYREKT. SZPITALA SEJMIKOWEGO W PRUŻANIE\n\nSkładamy tą drogą Serdeczne Podziękowanie za troskliwą i bezinteresowną opiekę oraz skuteczną pomoc lekarską i pielęgniarce \nPani **GRZYBOWSKIEJ** \nza pomoc przy moim porodzie\n\n~ Mojżesz i Regina Judewicz",
+      "status": "done",
+      "comment": "",
+      "timestamp": "2026-05-01T15:46:07.556935"
+    },
+    {
+      "path": "pages.0.blocks.18.transcription",
+      "original": "אונזערע גוטע פריינט פאמיליעס פאמעראניעץ\nשפירא צו דער חתונה פון זייער טאכטער\nאון שוועסטער רחל מיט ה' חיים שור\nאונזער הארציקן מזל טוב\nטוביה בלומענקראנץ און פאמיליע.",
+      "corrected": "אונזערע גוטע פֿריינט פֿאמיליעס פּאמעראניעץ\nשׁפּירא צו דער חתונה פֿון זייער טאכֿטער\nאון שׁוועסטער רחל מיט ה' חיים שוֹר\nאונזער הארציקן מזל טוב\nטוביה בלומענקראנץ און פֿאמיליע.",
       "status": "pending",
       "comment": "",
-      "timestamp": "2026-05-01T15:46:07.374798"
+      "timestamp": "2026-05-01T15:47:49.559216"
     }
   ]
 }
