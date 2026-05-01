@@ -6,6 +6,7 @@ import html
 import io
 import json
 from datetime import datetime
+import re
 from pathlib import Path
 from typing import Any
 
@@ -212,15 +213,17 @@ def _save_to_github(content_json: str) -> None:
         raise RuntimeError(f"GitHub PUT failed ({put_resp.status_code}): {put_resp.text[:200]}")
 
 
-def save_bundle_to_disk() -> None:
+def save_bundle() -> None:
     final_bundle = copy.deepcopy(st.session_state.initial_bundle)
     final_bundle["corrections"] = st.session_state.corrections
     content_json = json.dumps(final_bundle, ensure_ascii=False, indent=2)
 
-    if _github_secrets() is not None:
-        _save_to_github(content_json)
-    else:
-        DEFAULT_JSON_PATH.write_text(content_json, encoding="utf-8")
+    if _github_secrets() is None:
+        raise RuntimeError(
+            "GitHub secrets are not configured. Saving is disabled — corrections will NOT be persisted. "
+            "Please contact Sinai."
+        )
+    _save_to_github(content_json)
 
 
 def block_path(page_index: int, block_index: int) -> str:
@@ -261,13 +264,21 @@ def render_sidebar(
         st.header("Review Controls")
         st.caption(st.session_state.loaded_from)
 
+        _TAB_OPTIONS = ["OCR Blocks", "Content Units", "People", "Changes Log"]
+        if st.session_state.active_tab not in _TAB_OPTIONS:
+            st.session_state.active_tab = "OCR Blocks"
         st.session_state.active_tab = st.radio(
             "Navigator",
-            ["OCR Blocks", "Content Units", "People"],
-            index=["OCR Blocks", "Content Units", "People"].index(st.session_state.active_tab),
+            _TAB_OPTIONS,
+            index=_TAB_OPTIONS.index(st.session_state.active_tab),
             horizontal=True,
         )
         st.session_state.search_term = st.text_input("Search", value=st.session_state.search_term)
+
+        if _github_secrets() is not None:
+            st.success("Auto-save: GitHub active", icon="☁️")
+        else:
+            st.warning("Auto-save: local disk only (secrets not configured)", icon="⚠️")
 
         col_prev, col_mid, col_next = st.columns([1, 2, 1])
         with col_prev:
@@ -314,6 +325,14 @@ def render_sidebar(
                 st.markdown(f"**{person.get('name', '(Unknown)')}**")
                 st.caption(person.get("holocaust_fate", ""))
                 st.divider()
+
+        elif st.session_state.active_tab == "Changes Log":
+            corrections = st.session_state.bundle.get("corrections", [])
+            total = len(corrections)
+            done = sum(1 for c in corrections if c.get("status") == "done")
+            col_d, col_p = st.columns(2)
+            col_d.metric("Done", done)
+            col_p.metric("Pending", total - done)
 
     return current_page_index, selected_block_id
 
@@ -495,10 +514,10 @@ def _render_inline_editor(
         original = get_by_path(st.session_state.initial_bundle, path)
         add_or_update_correction(path, original, new_text, new_status, new_comment)
         try:
-            save_bundle_to_disk()
+            save_bundle()
             st.toast("Saved ✓")
         except Exception as exc:
-            st.error(f"Could not write to disk: {exc}")
+            st.error(f"Auto-save failed: {exc}")
 
     st.caption(f"Block ID: {block_id}")
     st.caption(f"Confidence: {round(float(block.get('confidence', 0.0)) * 100, 2)}%")
@@ -593,6 +612,66 @@ def render_text_panel(
     return clicked_id
 
 
+def render_changes_log() -> None:
+    st.subheader("Corrections Log")
+    corrections = st.session_state.bundle.get("corrections", [])
+    if not corrections:
+        st.info("No corrections yet.")
+        return
+
+    sorted_corrections = sorted(corrections, key=lambda c: c.get("timestamp", ""), reverse=True)
+
+    for c in sorted_corrections:
+        path = c.get("path", "")
+        m = re.search(r"pages\.(\d+)\.blocks\.(\d+)", path)
+        if m:
+            label = f"Page {int(m.group(1)) + 1}, Block {int(m.group(2)) + 1}"
+        else:
+            label = html.escape(path)
+
+        ts_raw = c.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_raw).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            ts = html.escape(ts_raw)
+
+        status = c.get("status", "pending")
+        color = STATUS_COLORS.get(status, "#3f3f46")
+        badge = (
+            f'<span style="background:{color};color:#fff;border-radius:4px;'
+            f'padding:2px 8px;font-size:0.75rem;">{html.escape(status)}</span>'
+        )
+
+        original = html.escape(c.get("original", "")).replace("\n", "<br>")
+        corrected = html.escape(c.get("corrected", "")).replace("\n", "<br>")
+        comment = c.get("comment", "").strip()
+
+        rtl_style = "direction:rtl;text-align:right;font-family:serif;font-size:1rem;line-height:1.6;"
+        st.markdown(
+            f"""
+<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <strong>{label}</strong>
+    <span style="color:#6b7280;font-size:0.8rem;">{ts}</span>
+    {badge}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div>
+      <div style="font-size:0.7rem;color:#ef4444;margin-bottom:4px;">ORIGINAL</div>
+      <div style="{rtl_style}color:#ef4444;">{original}</div>
+    </div>
+    <div>
+      <div style="font-size:0.7rem;color:#16a34a;margin-bottom:4px;">CORRECTED</div>
+      <div style="{rtl_style}color:#16a34a;">{corrected}</div>
+    </div>
+  </div>
+  {'<div style="margin-top:8px;font-size:0.85rem;color:#6b7280;">💬 ' + html.escape(comment) + '</div>' if comment else ''}
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+
 def main() -> None:
     st.set_page_config(page_title="Pruzaner Sztyme Review", layout="wide")
     st.title("Pruzaner Sztyme Review")
@@ -680,15 +759,17 @@ def main() -> None:
             st.session_state.selected_block_id = clicked_block_id
             st.rerun()
     with col_right:
-        # Render the editor outside the scrollable container so it's always visible.
-        clicked_text_block = render_text_panel(
-            current_page,
-            st.session_state.selected_block_id,
-            st.session_state.current_page_index,
-        )
-        if clicked_text_block and clicked_text_block != st.session_state.selected_block_id:
-            st.session_state.selected_block_id = clicked_text_block
-            st.rerun()
+        if st.session_state.active_tab == "Changes Log":
+            render_changes_log()
+        else:
+            clicked_text_block = render_text_panel(
+                current_page,
+                st.session_state.selected_block_id,
+                st.session_state.current_page_index,
+            )
+            if clicked_text_block and clicked_text_block != st.session_state.selected_block_id:
+                st.session_state.selected_block_id = clicked_text_block
+                st.rerun()
 
     export_name = "pruzaner_review.json"
     edition = st.session_state.initial_bundle.get("edition", {}) if st.session_state.initial_bundle else {}
